@@ -1,0 +1,380 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+  background: #000;
+  font-family: "Courier New", Courier, monospace;
+}
+
+body {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+body.desktop-mode {
+  min-height: 100vh;
+}
+
+body.mobile-mode {
+  align-items: stretch;
+}
+
+#game-container {
+  position: relative;
+  background: #000;
+}
+
+body.desktop-mode {
+  min-height: 100vh;
+  overflow: auto;
+}
+
+body.desktop-mode #game-container {
+  width: 800px;
+  height: 600px;
+}
+
+body.mobile-mode #game-container {
+  width: 100vw;
+  height: 100vh;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+
+#game-stage {
+  position: relative;
+  overflow: hidden;
+}
+
+body.desktop-mode #game-stage {
+  width: 800px;
+  height: 600px;
+}
+
+body.mobile-mode #game-stage {
+  height: 66vh;
+  height: 66dvh;
+  flex-shrink: 0;
+}
+
+body.desktop-mode #game {
+  width: 800px;
+  height: 600px;
+  border: 1px solid #333;
+}
+
+body.mobile-mode #game {
+  width: 100%;
+  height: 100%;
+  border: none;
+}
+
+#game {
+  display: block;
+}
+
+#ui {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 10;
+  color: #fff;
+  pointer-events: none;
+}
+
+body.mobile-mode #score {
+  font-size: 13px;
+  letter-spacing: 1px;
+}
+
+#score {
+  font-size: 20px;
+  letter-spacing: 2px;
+}
+
+#wave-status {
+  margin-top: 6px;
+  font-size: 11px;
+  letter-spacing: 1px;
+}
+
+#wave-label {
+  color: #fff;
+}
+
+#wave-countdown {
+  margin-left: 6px;
+  color: #fff;
+}
+
+#wave-status.on-cooldown #wave-label {
+  color: #666;
+}
+
+body.mobile-mode #wave-status {
+  display: none;
+}
+
+#mute-btn {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 10;
+  background: transparent;
+  color: #fff;
+  border: 1px solid #fff;
+  padding: 4px 10px;
+  font-family: inherit;
+  font-size: 12px;
+  letter-spacing: 1px;
+  cursor: pointer;
+}
+
+body.mobile-mode #mute-btn {
+  font-size: 9px;
+  padding: 3px 7px;
+  letter-spacing: 0;
+}
+
+#mute-btn:hover {
+  background: #fff;
+  color: #000;
+}
+
+#start-screen {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  background: rgba(0, 0, 0, 0.92);
+  color: #fff;
+  text-align: center;
+  padding: 16px;
+}
+
+body.mobile-mode #start-screen {
+  padding: 10px 12px;
+}
+
+#start-screen h1 {
+  font-size: clamp(28px, 8vw, 42px);
+  letter-spacing: 8px;
+  margin-bottom: 20px;
+}
+
+body.mobile-mode #start-screen h1 {
+  font-size: 20px;
+  letter-spacing: 4px;
+  margin-bottom: 10px;
+}
+
+.instructions {
+  margin-bottom: 20px;
+  line-height: 1.8;
+  font-size: clamp(12px, 3.5vw, 15px);
+  letter-spacing: 1px;
+}
+
+body.mobile-mode .instructions {
+  font-size: 10px;
+  line-height: 1.45;
+  margin-bottom: 10px;
+  letter-spacing: 0;
+}
+
+.start-prompt {
+  font-size: clamp(13px, 4vw, 16px);
+  letter-spacing: 2px;
+  opacity: 0.9;
+  animation: blink 1.2s step-start infinite;
+}
+
+body.mobile-mode .start-prompt {
+  font-size: 10px;
+  letter-spacing: 1px;
+}
+
+.instructions p {
+  margin: 0;
+  opacity: 0.85;
+}
+
+.instructions.hidden,
+.start-prompt.hidden {
+  display: none;
+}
+
+@keyframes blink {
+  50% { opacity: 0.35; }
+}
+
+#start-screen.hidden {
+  display: none;
+}
+
+/* --- Mobile controller panel (Game Boy style) --- */
+#mobile-controls {
+  display: none;
+  height: 34vh;
+  height: 34dvh;
+  flex-shrink: 0;
+  background: #0a0a0a;
+  border-top: 2px solid #fff;
+  position: relative;
+}
+
+body.mobile-mode #mobile-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 20px 20px;
+}
+
+#mobile-controls.hidden {
+  display: none !important;
+}
+
+#joystick-zone {
+  width: 42%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  touch-action: none;
+}
+
+#joystick-base {
+  width: 120px;
+  height: 120px;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  position: relative;
+  background: #111;
+  box-shadow: inset 0 0 0 2px #333;
+}
+
+#joystick-knob {
+  width: 48px;
+  height: 48px;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  background: #000;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  margin: -24px 0 0 -24px;
+  transition: transform 0.05s linear;
+  pointer-events: none;
+}
+
+#action-buttons {
+  width: 42%;
+  height: 100%;
+  position: relative;
+  display: flex;
+  flex-direction: row;
+  align-items: flex-end;
+  justify-content: flex-end;
+  touch-action: none;
+}
+
+body.mobile-mode #joystick-base {
+  width: 140px;
+  height: 140px;
+}
+
+body.mobile-mode #joystick-knob {
+  width: 54px;
+  height: 54px;
+  margin: -27px 0 0 -27px;
+}
+
+body.mobile-mode #action-buttons {
+  width: 44%;
+  min-width: 140px;
+  padding-right: 6px;
+  padding-bottom: 6px;
+}
+
+body.mobile-mode #fire-btn {
+  width: 76px;
+  height: 76px;
+  font-size: 9px;
+  letter-spacing: 1px;
+  position: absolute;
+  right: 28px;
+  bottom: 6px;
+}
+
+body.mobile-mode #wave-btn {
+  width: 54px;
+  height: 54px;
+  font-size: 7px;
+  letter-spacing: 0;
+  position: absolute;
+  right: 82px;
+  bottom: 68px;
+}
+
+body.mobile-mode #mobile-controls {
+  padding: 8px 14px 14px;
+}
+
+#wave-btn,
+#fire-btn {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  background: #000;
+  color: #fff;
+  font-family: inherit;
+  font-size: 10px;
+  letter-spacing: 1px;
+  cursor: pointer;
+  touch-action: none;
+  flex-shrink: 0;
+}
+
+body.mobile-mode #wave-btn.on-cooldown {
+  font-size: 16px;
+  font-weight: bold;
+  color: #fff;
+  opacity: 1;
+  border-color: #666;
+  background: #111;
+}
+
+#wave-btn.on-cooldown {
+  opacity: 1;
+  border-color: #666;
+  background: #111;
+  color: #fff;
+}
+
+#fire-btn:disabled {
+  opacity: 0.35;
+  border-color: #666;
+  color: #666;
+}
+
+#wave-btn:not(.on-cooldown):active,
+#fire-btn:active {
+  background: #fff;
+  color: #000;
+}

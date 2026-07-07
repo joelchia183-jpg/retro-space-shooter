@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Retro Asteroids</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="desktop-mode">
+  <div id="game-container">
+    <div id="game-stage">
+      <div id="ui">
+        <div id="score">Score: 0</div>
+        <div id="wave-status">
+          <span id="wave-label">WAVE READY</span>
+          <span id="wave-countdown"></span>
+        </div>
+      </div>
+      <button id="mute-btn" type="button" aria-label="Toggle sound">SFX ON</button>
+      <div id="start-screen">
+        <h1>ASTEROIDS</h1>
+        <div id="instructions-desktop" class="instructions">
+          <p><strong>W</strong> — Thrust forward</p>
+          <p><strong>A</strong> — Rotate left</p>
+          <p><strong>D</strong> — Rotate right</p>
+          <p><strong>S</strong> — Reverse thrust</p>
+          <p><strong>Spacebar</strong> — Shoot</p>
+          <p><strong>E</strong> — Shockwave</p>
+        </div>
+        <div id="instructions-mobile" class="instructions hidden">
+          <p>Drag <strong>joystick</strong> toward where you want to fly</p>
+          <p>Pull opposite to your drift to slow down</p>
+          <p><strong>FIRE</strong> — Shoot &nbsp; <strong>WAVE</strong> — Shockwave</p>
+        </div>
+        <p class="start-prompt start-prompt-desktop">Press <strong>SPACE</strong> to start</p>
+        <p class="start-prompt start-prompt-mobile hidden">Tap screen to start</p>
+      </div>
+      <canvas id="game"></canvas>
+    </div>
+
+    <div id="mobile-controls" class="hidden">
+      <div id="joystick-zone">
+        <div id="joystick-base">
+          <div id="joystick-knob"></div>
+        </div>
+      </div>
+      <div id="action-buttons">
+        <button id="fire-btn" type="button">FIRE</button>
+        <button id="wave-btn" type="button">WAVE</button>
+      </div>
+    </div>
+  </div>
+  <script src="game.js"></script>
+</body>
+</html>
