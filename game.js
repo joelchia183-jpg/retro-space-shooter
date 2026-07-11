@@ -27,6 +27,10 @@ let screenShake = 0;
 let particles = [];
 let rocks = [];
 let bullets = [];
+let ufos = [];
+let ufoSpawnTimer = 0;
+let ufoNextSpawn = 0;
+let ufoAudioState = "none";
 let rockCount = 4;
 let shipDebris = [];
 let shipBreakActive = false;
@@ -64,11 +68,33 @@ const joystick = {
 const JOYSTICK_DEAD_ZONE = 0.12;
 const MOBILE_MAX_TURN_SPEED = 2.8;
 
+const mouse = {
+  x: 0,
+  y: 0,
+  leftDown: false,
+  tracking: false,
+  power: 0,
+  angle: 0,
+};
+
+const MOUSE_MAX_DISTANCE_RATIO = 0.35;
+const MOUSE_DEAD_ZONE = 0.08;
+
 // --- Shockwave ---
 let shockwaves = [];
 let shockwaveCooldownUntil = 0;
 const SHOCKWAVE_COOLDOWN = 5000;
 const SHOCKWAVE_EXPAND_SPEED = 4;
+
+// --- UFO enemy (hunter — no shooting) ---
+const UFO_RADIUS = 22;
+const UFO_VISUAL_RADIUS = 32;
+const UFO_CRUISE_SPEED = 1.5;
+const UFO_SPEED = 2.4;
+const UFO_CHASE_RANGE = 180;
+const UFO_SCORE = 500;
+const UFO_SPAWN_MIN = 12;
+const UFO_SPAWN_MAX = 28;
 
 // --- Ship settings ---
 const ship = {
@@ -78,7 +104,7 @@ const ship = {
   vx: 0,
   vy: 0,
   radius: 14,
-  thrustPower: 0.06,
+  thrustPower: 0.09,
   reversePower: 0.02,
   rotateSpeed: 0.06,
   maxSpeed: 7,
@@ -101,6 +127,16 @@ const sfx = {
   thrustGain: null,
   thrustFilter: null,
   thrustActive: false,
+  ufoPatrolOsc: null,
+  ufoPatrolGain: null,
+  ufoPatrolPulse: null,
+  ufoPatrolPulseDepth: null,
+  ufoPatrolActive: false,
+  ufoChaseOsc: null,
+  ufoChaseGain: null,
+  ufoChasePulse: null,
+  ufoChasePulseDepth: null,
+  ufoChaseActive: false,
   muted: false,
   volume: 0.6,
   ready: false,
@@ -134,7 +170,174 @@ function initAudio() {
   sfx.thrustGain.connect(sfx.master);
   sfx.thrustOsc.start();
 
+  initUfoSoundNodes();
+
   sfx.ready = true;
+}
+
+function initUfoSoundNodes() {
+  if (!sfx.ctx || sfx.ufoPatrolOsc) return;
+  const ctx = sfx.ctx;
+
+  sfx.ufoPatrolOsc = ctx.createOscillator();
+  sfx.ufoPatrolOsc.type = "sine";
+  sfx.ufoPatrolOsc.frequency.value = 75;
+  sfx.ufoPatrolGain = ctx.createGain();
+  sfx.ufoPatrolGain.gain.value = 0;
+  sfx.ufoPatrolPulse = ctx.createOscillator();
+  sfx.ufoPatrolPulse.type = "sine";
+  sfx.ufoPatrolPulse.frequency.value = 2.2;
+  sfx.ufoPatrolPulseDepth = ctx.createGain();
+  sfx.ufoPatrolPulseDepth.gain.value = 0.008;
+  sfx.ufoPatrolOsc.connect(sfx.ufoPatrolGain);
+  sfx.ufoPatrolGain.connect(sfx.master);
+  sfx.ufoPatrolPulse.connect(sfx.ufoPatrolPulseDepth);
+  sfx.ufoPatrolPulseDepth.connect(sfx.ufoPatrolGain.gain);
+  sfx.ufoPatrolOsc.start();
+  sfx.ufoPatrolPulse.start();
+
+  sfx.ufoChaseOsc = ctx.createOscillator();
+  sfx.ufoChaseOsc.type = "square";
+  sfx.ufoChaseOsc.frequency.value = 108;
+  sfx.ufoChaseGain = ctx.createGain();
+  sfx.ufoChaseGain.gain.value = 0;
+  sfx.ufoChasePulse = ctx.createOscillator();
+  sfx.ufoChasePulse.type = "sine";
+  sfx.ufoChasePulse.frequency.value = 7;
+  sfx.ufoChasePulseDepth = ctx.createGain();
+  sfx.ufoChasePulseDepth.gain.value = 0.012;
+  sfx.ufoChaseOsc.connect(sfx.ufoChaseGain);
+  sfx.ufoChaseGain.connect(sfx.master);
+  sfx.ufoChasePulse.connect(sfx.ufoChasePulseDepth);
+  sfx.ufoChasePulseDepth.connect(sfx.ufoChaseGain.gain);
+  sfx.ufoChaseOsc.start();
+  sfx.ufoChasePulse.start();
+}
+
+const UFO_PATROL_VOLUME = 0.022;
+const UFO_CHASE_VOLUME = 0.032;
+
+function playUfoAppearSfx() {
+  if (!sfx.ready || sfx.muted) return;
+  const ctx = sfx.ctx;
+  const now = ctx.currentTime;
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.type = "square";
+  osc.frequency.setValueAtTime(220, now);
+  osc.frequency.exponentialRampToValueAtTime(880, now + 0.18);
+  gain.gain.setValueAtTime(0.08, now);
+  gain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+  osc.connect(gain);
+  gain.connect(sfx.master);
+  osc.start(now);
+  osc.stop(now + 0.22);
+}
+
+function playUfoDestroyedSound() {
+  if (!sfx.ready || sfx.muted) return;
+  const ctx = sfx.ctx;
+  const now = ctx.currentTime;
+
+  const zap = ctx.createOscillator();
+  const zapGain = ctx.createGain();
+  zap.type = "sawtooth";
+  zap.frequency.setValueAtTime(720, now);
+  zap.frequency.exponentialRampToValueAtTime(90, now + 0.28);
+  zapGain.gain.setValueAtTime(0.11, now);
+  zapGain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+  zap.connect(zapGain);
+  zapGain.connect(sfx.master);
+  zap.start(now);
+  zap.stop(now + 0.32);
+
+  const ping = ctx.createOscillator();
+  const pingGain = ctx.createGain();
+  ping.type = "square";
+  ping.frequency.setValueAtTime(960, now);
+  ping.frequency.exponentialRampToValueAtTime(180, now + 0.14);
+  pingGain.gain.setValueAtTime(0.09, now);
+  pingGain.gain.exponentialRampToValueAtTime(0.001, now + 0.16);
+  ping.connect(pingGain);
+  pingGain.connect(sfx.master);
+  ping.start(now);
+  ping.stop(now + 0.18);
+
+  playNoiseBurst(0.1, 0.07, 2600);
+}
+
+function startUfoPatrolHum() {
+  if (!sfx.ready || sfx.muted || sfx.ufoPatrolActive) return;
+  initUfoSoundNodes();
+  stopUfoChaseHum();
+  const ctx = sfx.ctx;
+  const now = ctx.currentTime;
+  sfx.ufoPatrolPulseDepth.gain.setValueAtTime(0.008, now);
+  sfx.ufoPatrolGain.gain.cancelScheduledValues(now);
+  sfx.ufoPatrolGain.gain.setValueAtTime(0, now);
+  sfx.ufoPatrolGain.gain.linearRampToValueAtTime(UFO_PATROL_VOLUME, now + 0.3);
+  sfx.ufoPatrolActive = true;
+}
+
+function stopUfoPatrolHum() {
+  if (!sfx.ready || !sfx.ufoPatrolActive) return;
+  const ctx = sfx.ctx;
+  const now = ctx.currentTime;
+  sfx.ufoPatrolGain.gain.cancelScheduledValues(now);
+  sfx.ufoPatrolGain.gain.setValueAtTime(sfx.ufoPatrolGain.gain.value, now);
+  sfx.ufoPatrolGain.gain.linearRampToValueAtTime(0, now + 0.2);
+  sfx.ufoPatrolPulseDepth.gain.setValueAtTime(0, now + 0.2);
+  sfx.ufoPatrolActive = false;
+}
+
+function startUfoChaseHum() {
+  if (!sfx.ready || sfx.muted || sfx.ufoChaseActive) return;
+  initUfoSoundNodes();
+  stopUfoPatrolHum();
+  const ctx = sfx.ctx;
+  const now = ctx.currentTime;
+  sfx.ufoChasePulseDepth.gain.setValueAtTime(0.012, now);
+  sfx.ufoChaseGain.gain.cancelScheduledValues(now);
+  sfx.ufoChaseGain.gain.setValueAtTime(0, now);
+  sfx.ufoChaseGain.gain.linearRampToValueAtTime(UFO_CHASE_VOLUME, now + 0.15);
+  sfx.ufoChaseActive = true;
+}
+
+function stopUfoChaseHum() {
+  if (!sfx.ready || !sfx.ufoChaseActive) return;
+  const ctx = sfx.ctx;
+  const now = ctx.currentTime;
+  sfx.ufoChaseGain.gain.cancelScheduledValues(now);
+  sfx.ufoChaseGain.gain.setValueAtTime(sfx.ufoChaseGain.gain.value, now);
+  sfx.ufoChaseGain.gain.linearRampToValueAtTime(0, now + 0.2);
+  sfx.ufoChasePulseDepth.gain.setValueAtTime(0, now + 0.2);
+  sfx.ufoChaseActive = false;
+}
+
+function setUfoAudioState(next) {
+  if (ufoAudioState === next) return;
+  if (ufoAudioState === "patrol") stopUfoPatrolHum();
+  if (ufoAudioState === "chase") stopUfoChaseHum();
+  ufoAudioState = next;
+  if (next === "patrol") startUfoPatrolHum();
+  else if (next === "chase") startUfoChaseHum();
+}
+
+function stopAllUfoSounds() {
+  if (ufoAudioState === "none") return;
+  if (ufoAudioState === "patrol") stopUfoPatrolHum();
+  else if (ufoAudioState === "chase") stopUfoChaseHum();
+  ufoAudioState = "none";
+}
+
+function beginUfoChase(ufo) {
+  if (ufo.chasing) return;
+  ufo.chasing = true;
+  setUfoAudioState("chase");
+}
+
+function onUfoRemoved() {
+  stopAllUfoSounds();
 }
 
 function resumeAudio() {
@@ -149,7 +352,10 @@ function setMuted(muted) {
   if (sfx.master) {
     sfx.master.gain.value = muted ? 0 : sfx.volume;
   }
-  if (muted) stopThrustSound();
+  if (muted) {
+    stopThrustSound();
+    stopAllUfoSounds();
+  }
   muteBtn.textContent = muted ? "SFX OFF" : "SFX ON";
 }
 
@@ -312,6 +518,8 @@ function goToTitleScreen() {
   rocks = [];
   bullets = [];
   particles = [];
+  shockwaves = [];
+  resetUfoSpawning();
   screenShake = 0;
   for (const key in keys) keys[key] = false;
   ship.x = W / 2;
@@ -319,9 +527,7 @@ function goToTitleScreen() {
   ship.angle = -Math.PI / 2;
   ship.vx = 0;
   ship.vy = 0;
-  shockwaves = [];
-  shockwaveCooldownUntil = 0;
-  resetJoystick();
+  resetMouse();
   spawnInitialRocks(4);
   startScreen.classList.remove("hidden");
 }
@@ -468,6 +674,139 @@ function updateMobileShip(dt) {
   }
 
   return thrusting;
+}
+
+function resetMouse() {
+  mouse.leftDown = false;
+  mouse.tracking = false;
+  mouse.power = 0;
+  mouse.angle = 0;
+}
+
+function updateDesktopMouseInput() {
+  mouse.power = 0;
+  mouse.angle = 0;
+
+  if (!mouse.tracking) return;
+
+  const dx = mouse.x - ship.x;
+  const dy = mouse.y - ship.y;
+  const dist = Math.sqrt(dx * dx + dy * dy);
+  const maxDist = Math.max(40, Math.min(W, H) * MOUSE_MAX_DISTANCE_RATIO);
+  mouse.power = Math.min(1, dist / maxDist);
+
+  if (dist > 1) {
+    mouse.angle = Math.atan2(dy, dx);
+  }
+}
+
+function updateDesktopMouseShip(dt) {
+  updateDesktopMouseInput();
+  let thrusting = false;
+  const ts = timeScale(dt);
+
+  if (!mouse.tracking || mouse.power <= MOUSE_DEAD_ZONE) {
+    if (!keys.KeyW) stopThrustSound();
+    return thrusting;
+  }
+
+  const targetAngle = mouse.angle;
+  const power = mouse.power;
+  const angleDiff = shortestAngleDiff(ship.angle, targetAngle);
+
+  const turnStep = Math.sign(angleDiff) * Math.min(Math.abs(angleDiff), MOBILE_MAX_TURN_SPEED * dt);
+  ship.angle += turnStep;
+
+  const facingAlign = Math.cos(shortestAngleDiff(ship.angle, targetAngle));
+  const speed = shipSpeed();
+  let braking = false;
+
+  if (speed > 0.2) {
+    const velAngle = Math.atan2(ship.vy, ship.vx);
+    const velAlign = Math.cos(shortestAngleDiff(velAngle, targetAngle));
+
+    if (velAlign < -0.35) {
+      const brakeStrength = power * Math.abs(velAlign) * ship.reversePower * ts;
+      ship.vx -= Math.cos(velAngle) * brakeStrength;
+      ship.vy -= Math.sin(velAngle) * brakeStrength;
+      braking = true;
+      thrusting = true;
+      startThrustSound();
+    }
+  }
+
+  if (!braking) {
+    if (facingAlign > 0.6) {
+      const thrustStrength = power * facingAlign * ship.thrustPower * ts;
+      ship.vx += Math.cos(ship.angle) * thrustStrength;
+      ship.vy += Math.sin(ship.angle) * thrustStrength;
+      thrusting = true;
+      startThrustSound();
+    } else if (facingAlign > 0.15) {
+      const thrustStrength = power * facingAlign * ship.thrustPower * ts * 0.35;
+      ship.vx += Math.cos(ship.angle) * thrustStrength;
+      ship.vy += Math.sin(ship.angle) * thrustStrength;
+      thrusting = true;
+      startThrustSound();
+    } else if (!keys.KeyW) {
+      stopThrustSound();
+    }
+  }
+
+  return thrusting;
+}
+
+function getCanvasMousePos(e) {
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = canvas.width / rect.width;
+  const scaleY = canvas.height / rect.height;
+  return {
+    x: (e.clientX - rect.left) * scaleX,
+    y: (e.clientY - rect.top) * scaleY,
+  };
+}
+
+function isDesktopGameplayActive() {
+  return inputMode === "desktop" && !waitingToStart && !gameOver && !shipBreakActive;
+}
+
+function setupDesktopMouseControls() {
+  canvas.addEventListener("mousemove", (e) => {
+    if (!isDesktopGameplayActive()) return;
+    const pos = getCanvasMousePos(e);
+    mouse.x = pos.x;
+    mouse.y = pos.y;
+    mouse.tracking = true;
+  });
+
+  canvas.addEventListener("mouseleave", () => {
+    mouse.tracking = false;
+    mouse.leftDown = false;
+    if (!keys.KeyW) stopThrustSound();
+  });
+
+  canvas.addEventListener("mousedown", (e) => {
+    if (!isDesktopGameplayActive()) return;
+    const pos = getCanvasMousePos(e);
+    mouse.x = pos.x;
+    mouse.y = pos.y;
+    mouse.tracking = true;
+    if (e.button === 0) {
+      mouse.leftDown = true;
+      shoot();
+    } else if (e.button === 2) {
+      e.preventDefault();
+      activateShockwave();
+    }
+  });
+
+  canvas.addEventListener("contextmenu", (e) => {
+    e.preventDefault();
+  });
+
+  window.addEventListener("mouseup", (e) => {
+    if (e.button === 0) mouse.leftDown = false;
+  });
 }
 
 function setupMobileControls() {
@@ -661,6 +1000,19 @@ function checkShockwaveRockCollisions(ts) {
         breakRock(rock, j);
       }
     }
+
+    for (let k = ufos.length - 1; k >= 0; k--) {
+      const ufo = ufos[k];
+      if (wave.hitSet.has(ufo)) continue;
+      const dist = distance(wave.x, wave.y, ufo.x, ufo.y);
+      const ringTouchesUfo =
+        wave.radius >= dist - ufo.radius &&
+        wave.radius <= dist + ufo.radius + wave.speed * ts;
+      if (ringTouchesUfo) {
+        wave.hitSet.add(ufo);
+        destroyUfo(k);
+      }
+    }
   }
 }
 
@@ -695,13 +1047,18 @@ window.addEventListener("keydown", (e) => {
     return;
   }
 
+  if (e.code === "KeyU" && !e.repeat) {
+    spawnUfo(true);
+    return;
+  }
+
   keys[e.code] = true;
   if (e.code === "KeyW") startThrustSound();
 });
 
 window.addEventListener("keyup", (e) => {
   keys[e.code] = false;
-  if (e.code === "KeyW") stopThrustSound();
+  if (e.code === "KeyW" && !mouse.leftDown) stopThrustSound();
 });
 
 muteBtn.addEventListener("click", () => {
@@ -760,10 +1117,14 @@ function triggerGameOver() {
   createShipDebris();
   shipBreakActive = true;
   shipBreakTimer = 0;
+  stopAllUfoSounds();
   playGameOverSound();
   rocks = [];
   bullets = [];
   shockwaves = [];
+  ufos = [];
+  ufoSpawnTimer = 0;
+  ufoNextSpawn = rand(UFO_SPAWN_MIN, UFO_SPAWN_MAX);
   screenShake = 12;
   addExplosionParticles(ship.x, ship.y, 18);
 }
@@ -827,51 +1188,56 @@ function reduceRockSpeed(rock, amount) {
   rock.vy = (rock.vy / speed) * newSpeed;
 }
 
+function bounceTwoBodies(a, massA, b, massB, dragA, dragB) {
+  let dx = b.x - a.x;
+  let dy = b.y - a.y;
+  let dist = Math.sqrt(dx * dx + dy * dy);
+  const minDist = a.radius + b.radius;
+
+  if (dist >= minDist) return false;
+
+  if (dist === 0) {
+    const angle = rand(0, Math.PI * 2);
+    dx = Math.cos(angle);
+    dy = Math.sin(angle);
+    dist = 1;
+  }
+
+  const nx = dx / dist;
+  const ny = dy / dist;
+  const overlap = minDist - dist;
+  a.x -= nx * overlap * 0.5;
+  a.y -= ny * overlap * 0.5;
+  b.x += nx * overlap * 0.5;
+  b.y += ny * overlap * 0.5;
+
+  const rvx = b.vx - a.vx;
+  const rvy = b.vy - a.vy;
+  const velAlongNormal = rvx * nx + rvy * ny;
+
+  if (velAlongNormal > 0) return true;
+
+  const impulse = (2 * velAlongNormal) / (massA + massB);
+  a.vx += impulse * massB * nx;
+  a.vy += impulse * massB * ny;
+  b.vx -= impulse * massA * nx;
+  b.vy -= impulse * massA * ny;
+
+  if (dragA) reduceRockSpeed(a, dragA);
+  if (dragB) reduceRockSpeed(b, dragB);
+  return true;
+}
+
 function resolveRockCollisions() {
   for (let i = 0; i < rocks.length; i++) {
     for (let j = i + 1; j < rocks.length; j++) {
       const a = rocks[i];
       const b = rocks[j];
-      let dx = b.x - a.x;
-      let dy = b.y - a.y;
-      let dist = Math.sqrt(dx * dx + dy * dy);
-      const minDist = a.radius + b.radius;
-
-      if (dist >= minDist) continue;
-
-      if (dist === 0) {
-        const angle = rand(0, Math.PI * 2);
-        dx = Math.cos(angle);
-        dy = Math.sin(angle);
-        dist = 1;
-      }
-
-      const nx = dx / dist;
-      const ny = dy / dist;
-
-      const overlap = minDist - dist;
-      a.x -= nx * overlap * 0.5;
-      a.y -= ny * overlap * 0.5;
-      b.x += nx * overlap * 0.5;
-      b.y += ny * overlap * 0.5;
-
-      const rvx = b.vx - a.vx;
-      const rvy = b.vy - a.vy;
-      const velAlongNormal = rvx * nx + rvy * ny;
-
-      if (velAlongNormal > 0) continue;
-
-      const massA = a.radius * a.radius;
-      const massB = b.radius * b.radius;
-      const impulse = (2 * velAlongNormal) / (massA + massB);
-
-      a.vx += impulse * massB * nx;
-      a.vy += impulse * massB * ny;
-      b.vx -= impulse * massA * nx;
-      b.vy -= impulse * massA * ny;
-
-      reduceRockSpeed(a, ROCK_BOUNCE_DRAG);
-      reduceRockSpeed(b, ROCK_BOUNCE_DRAG);
+      bounceTwoBodies(
+        a, a.radius * a.radius,
+        b, b.radius * b.radius,
+        ROCK_BOUNCE_DRAG, ROCK_BOUNCE_DRAG
+      );
     }
   }
 }
@@ -897,6 +1263,230 @@ function spawnInitialRocks(count) {
 function spawnNextWave() {
   rockCount += 1;
   spawnRocks(rockCount);
+}
+
+// --- UFO enemy ---
+function resetUfoSpawning() {
+  stopAllUfoSounds();
+  ufos = [];
+  ufoSpawnTimer = 0;
+  ufoNextSpawn = rand(UFO_SPAWN_MIN, UFO_SPAWN_MAX);
+}
+
+function spawnUfo(force = false) {
+  if (!force && ufos.length > 0) return;
+  if (force) {
+    stopAllUfoSounds();
+    ufos.length = 0;
+  }
+
+  const side = Math.floor(rand(0, 4));
+  const pad = UFO_RADIUS + 20;
+  let x, y, vx, vy;
+
+  // Enter from a random edge and cruise straight toward the opposite side.
+  if (side === 0) {
+    x = rand(pad, W - pad);
+    y = -pad;
+    vx = 0;
+    vy = UFO_CRUISE_SPEED;
+  } else if (side === 1) {
+    x = W + pad;
+    y = rand(pad, H - pad);
+    vx = -UFO_CRUISE_SPEED;
+    vy = 0;
+  } else if (side === 2) {
+    x = rand(pad, W - pad);
+    y = H + pad;
+    vx = 0;
+    vy = -UFO_CRUISE_SPEED;
+  } else {
+    x = -pad;
+    y = rand(pad, H - pad);
+    vx = UFO_CRUISE_SPEED;
+    vy = 0;
+  }
+
+  ufos.push({
+    x,
+    y,
+    vx,
+    vy,
+    cruiseVx: vx,
+    cruiseVy: vy,
+    radius: UFO_RADIUS,
+    visualRadius: UFO_VISUAL_RADIUS,
+    speed: UFO_SPEED,
+    chasing: false,
+    bobPhase: rand(0, Math.PI * 2),
+  });
+
+  playUfoAppearSfx();
+  setUfoAudioState("patrol");
+}
+
+function updateUfoSpawning(dt) {
+  if (ufos.length > 0) return;
+  ufoSpawnTimer += dt;
+  if (ufoSpawnTimer >= ufoNextSpawn) {
+    ufoSpawnTimer = 0;
+    ufoNextSpawn = rand(UFO_SPAWN_MIN, UFO_SPAWN_MAX);
+    spawnUfo();
+  }
+}
+
+function normalizeUfoSpeed(ufo) {
+  const sp = Math.sqrt(ufo.vx * ufo.vx + ufo.vy * ufo.vy);
+  if (sp === 0) return;
+  ufo.vx = (ufo.vx / sp) * ufo.speed;
+  ufo.vy = (ufo.vy / sp) * ufo.speed;
+}
+
+function isUfoOffScreen(ufo) {
+  const pad = ufo.radius + 50;
+  return ufo.x < -pad || ufo.x > W + pad || ufo.y < -pad || ufo.y > H + pad;
+}
+
+function resolveUfoRockCollisions() {
+  const ufoMass = UFO_RADIUS * UFO_RADIUS * 4;
+
+  for (const ufo of ufos) {
+    for (const rock of rocks) {
+      const hit = bounceTwoBodies(
+        rock, rock.radius * rock.radius,
+        ufo, ufoMass,
+        ROCK_BOUNCE_DRAG, 0
+      );
+      if (hit && ufo.chasing) {
+        normalizeUfoSpeed(ufo);
+      }
+    }
+  }
+}
+
+function updateUfos(dt) {
+  const ts = timeScale(dt);
+
+  for (let i = ufos.length - 1; i >= 0; i--) {
+    const ufo = ufos[i];
+    const distToShip = distance(ufo.x, ufo.y, ship.x, ship.y);
+
+    // Latch onto the hero once they enter detection range.
+    if (distToShip < UFO_CHASE_RANGE) {
+      beginUfoChase(ufo);
+    }
+
+    if (ufo.chasing) {
+      const angle = Math.atan2(ship.y - ufo.y, ship.x - ufo.x);
+      ufo.vx = Math.cos(angle) * ufo.speed;
+      ufo.vy = Math.sin(angle) * ufo.speed;
+    } else {
+      // Far from the hero: keep cruising across the play area.
+      ufo.vx = ufo.cruiseVx;
+      ufo.vy = ufo.cruiseVy;
+    }
+
+    ufo.x += ufo.vx * ts;
+    ufo.y += ufo.vy * ts;
+
+    if (isUfoOffScreen(ufo)) {
+      ufos.splice(i, 1);
+      onUfoRemoved();
+    }
+  }
+
+  resolveUfoRockCollisions();
+}
+
+function destroyUfo(index) {
+  const ufo = ufos[index];
+  score += UFO_SCORE;
+  scoreEl.textContent = "Score: " + score;
+  addExplosionParticles(ufo.x, ufo.y, 22);
+  playUfoDestroyedSound();
+  screenShake = 10;
+  ufos.splice(index, 1);
+  onUfoRemoved();
+}
+
+function getUfoDrawScale(ufo) {
+  if (ufo.visualRadius != null) return ufo.visualRadius;
+  if (ufo.size != null) return ufo.size;
+  if (ufo.radius != null) return ufo.radius;
+  return 32;
+}
+
+function drawUFO(renderCtx, ufo) {
+  const s = ufo.visualRadius || Math.max(getUfoDrawScale(ufo), 32);
+
+  renderCtx.save();
+  renderCtx.translate(ufo.x, ufo.y);
+
+  const bob = Math.sin(performance.now() * 0.004 + (ufo.bobPhase || 0)) * 1.2;
+  renderCtx.translate(0, bob);
+
+  renderCtx.strokeStyle = "#ffffff";
+  renderCtx.lineWidth = 2;
+  renderCtx.lineCap = "round";
+  renderCtx.lineJoin = "round";
+
+  const rx = s;
+  const ry = s * 0.32;
+  const domeR = rx * 0.44;
+  const domeBaseY = -ry * 0.1;
+
+  // Main saucer body — wide ellipse
+  renderCtx.beginPath();
+  renderCtx.ellipse(0, 0, rx, ry, 0, 0, Math.PI * 2);
+  renderCtx.stroke();
+
+  // Lower hull — weighted underside arc
+  renderCtx.beginPath();
+  renderCtx.moveTo(-rx * 0.86, ry * 0.4);
+  renderCtx.quadraticCurveTo(0, ry * 1.3, rx * 0.86, ry * 0.4);
+  renderCtx.stroke();
+
+  // Cockpit dome — centered semi-circle
+  renderCtx.beginPath();
+  renderCtx.arc(0, domeBaseY, domeR, Math.PI, 0);
+  renderCtx.stroke();
+
+  // Antenna mast and ball tip
+  const domeTopY = domeBaseY - domeR;
+  const antennaTop = domeTopY - s * 0.22;
+  renderCtx.beginPath();
+  renderCtx.moveTo(0, domeTopY);
+  renderCtx.lineTo(0, antennaTop);
+  renderCtx.stroke();
+  renderCtx.beginPath();
+  renderCtx.arc(0, antennaTop - s * 0.04, s * 0.045, 0, Math.PI * 2);
+  renderCtx.stroke();
+
+  // Five portlights along a slight midsection curve
+  [-0.44, -0.22, 0, 0.22, 0.44].forEach((off, i) => {
+    const px = off * rx * 0.94;
+    const py = -ry * 0.06 + Math.pow(Math.abs(off), 1.6) * ry * 0.1;
+    const isCenter = i === 2;
+    renderCtx.beginPath();
+    renderCtx.ellipse(
+      px,
+      py,
+      isCenter ? s * 0.055 : s * 0.065,
+      isCenter ? s * 0.055 : s * 0.038,
+      0,
+      0,
+      Math.PI * 2
+    );
+    renderCtx.stroke();
+  });
+
+  renderCtx.restore();
+}
+
+function drawUfos() {
+  for (const ufo of ufos) {
+    drawUFO(ctx, ufo);
+  }
 }
 
 // --- Particles ---
@@ -1016,6 +1606,21 @@ function updateShip(dt) {
 
   if (inputMode === "mobile") {
     thrusting = updateMobileShip(dt);
+  } else if (mouse.tracking) {
+    thrusting = updateDesktopMouseShip(dt);
+
+    if (keys.KeyS) {
+      ship.vx -= Math.cos(ship.angle) * ship.reversePower * ts;
+      ship.vy -= Math.sin(ship.angle) * ship.reversePower * ts;
+      thrusting = true;
+    }
+
+    if (keys.KeyW) {
+      ship.vx += Math.cos(ship.angle) * ship.thrustPower * ts;
+      ship.vy += Math.sin(ship.angle) * ship.thrustPower * ts;
+      thrusting = true;
+      startThrustSound();
+    }
   } else {
     if (keys.KeyA) ship.angle -= ship.rotateSpeed * ts;
     if (keys.KeyD) ship.angle += ship.rotateSpeed * ts;
@@ -1053,7 +1658,7 @@ function updateShip(dt) {
   if (thrusting) {
     const thrustIntensity = inputMode === "mobile"
       ? joystick.power
-      : 1;
+      : (mouse.tracking ? mouse.power : 1);
     const speedRatio = speed / ship.maxSpeed;
     const spawnChance = (0.3 + speedRatio * 0.7) * thrustIntensity * ts;
     const spawnCount = speedRatio > 0.5 ? 2 : 1;
@@ -1062,7 +1667,7 @@ function updateShip(dt) {
     }
   }
 
-  if (inputMode === "desktop" && keys.Space) shoot();
+  if (inputMode === "desktop" && (keys.Space || mouse.leftDown)) shoot();
   if (inputMode === "mobile" && mobileInput.fire) shoot();
 }
 
@@ -1228,22 +1833,42 @@ function checkCollisions() {
   // Bullet vs rock
   for (let i = bullets.length - 1; i >= 0; i--) {
     const b = bullets[i];
+    let hit = false;
+
     for (let j = rocks.length - 1; j >= 0; j--) {
       const rock = rocks[j];
       if (distance(b.x, b.y, rock.x, rock.y) < rock.radius) {
         bullets.splice(i, 1);
         breakRock(rock, j);
+        hit = true;
+        break;
+      }
+    }
+    if (hit) continue;
+
+    for (let k = ufos.length - 1; k >= 0; k--) {
+      const ufo = ufos[k];
+      if (distance(b.x, b.y, ufo.x, ufo.y) < ufo.radius) {
+        bullets.splice(i, 1);
+        destroyUfo(k);
         break;
       }
     }
   }
 
-  // Ship vs rock
+  // Ship vs rock / UFO
   if (!gameOver && !shipBreakActive) {
     for (const rock of rocks) {
       if (distance(ship.x, ship.y, rock.x, rock.y) < rock.radius + ship.radius - 4) {
         triggerGameOver();
-        break;
+        return;
+      }
+    }
+
+    for (const ufo of ufos) {
+      if (distance(ship.x, ship.y, ufo.x, ufo.y) < ufo.radius + ship.radius - 4) {
+        triggerGameOver();
+        return;
       }
     }
   }
@@ -1318,6 +1943,7 @@ function draw() {
     drawShipDebris();
   } else if (!gameOver) {
     drawRocks();
+    drawUfos();
     drawBullets();
     drawParticles();
     drawShockwaves();
@@ -1337,6 +1963,8 @@ function update(currentTime) {
   if (!waitingToStart && !gameOver && !shipBreakActive) {
     updateShip(dt);
     updateRocks(dt);
+    updateUfos(dt);
+    updateUfoSpawning(dt);
     updateBullets(dt);
     updateShockwaves(dt);
     checkCollisions();
@@ -1384,6 +2012,8 @@ function resetGame() {
   scoreEl.textContent = "Score: 0";
   for (const key in keys) keys[key] = false;
   resetJoystick();
+  resetMouse();
+  resetUfoSpawning();
   spawnInitialRocks(4);
   updateWaveUI();
 }
@@ -1391,7 +2021,9 @@ function resetGame() {
 // --- Start ---
 resizeGame();
 setupMobileControls();
+setupDesktopMouseControls();
 window.addEventListener("resize", resizeGame);
 spawnInitialRocks(4);
+resetUfoSpawning();
 lastFrameTime = performance.now();
 requestAnimationFrame(update);

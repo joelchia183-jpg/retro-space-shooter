@@ -4,7 +4,7 @@
 
 **Retro Space Shooter** is a simple retro arcade-style space shooter inspired by classic vector arcade games like *Asteroids*.
 
-The game uses a black background and white line-art graphics for a clean, old-school arcade look. You control a triangular spaceship, shoot floating rocks, avoid collisions, and try to earn the highest score you can.
+The game uses a black background and white line-art graphics for a clean, old-school arcade look. You control a triangular spaceship, shoot floating rocks, dodge a hunter UFO, avoid collisions, and try to earn the highest score you can.
 
 This project was built with AI assistance using [Cursor](https://cursor.com).
 
@@ -14,14 +14,17 @@ This project was built with AI assistance using [Cursor](https://cursor.com).
 
 ### Desktop
 
-| Key | Action |
-|-----|--------|
+| Key / Input | Action |
+|-------------|--------|
 | **W** | Thrust forward |
 | **A** | Rotate left |
 | **D** | Rotate right |
 | **S** | Reverse thrust / slow down |
 | **Spacebar** | Shoot (in game) / start or return to title (on title & game over screens) |
 | **E** | Shockwave |
+| **Mouse over canvas** | Ship rotates toward cursor; distance from ship controls thrust power |
+| **Left click (hold)** | Fire |
+| **Right click** | Shockwave |
 
 ### Mobile
 
@@ -32,28 +35,59 @@ This project was built with AI assistance using [Cursor](https://cursor.com).
 
 Use the **SFX ON / OFF** button in the top-right corner to mute or unmute sound.
 
+### Beta test (desktop)
+
+| Key | Action |
+|-----|--------|
+| **U** | Force-spawn a UFO for testing |
+
 ---
 
 ## Gameplay Features
 
-- **Black background with white retro vector style** — no images, only simple outlines
+- **Black background with white retro vector style** — no image files; everything is drawn with Canvas line art
 - **Spaceship movement with inertia** — the ship drifts in space and does not stop instantly
-- **Shooting system** — fire bullets with the spacebar
+- **Shooting system** — fire bullets with Space (desktop) or FIRE (mobile)
 - **Rock spawning** — asteroids float around the screen; new waves spawn when all rocks are destroyed
 - **Rock splitting** — large rocks break into medium rocks, and medium rocks break into small rocks
 - **Rock-to-rock collisions** — rocks bounce off each other when they collide
-- **Explosion particles** — white particle bursts when rocks are destroyed
+- **UFO hunter enemy** — a classic flying saucer that crosses the screen, chases you when you get close, and causes game over on contact
+- **Explosion particles** — white particle bursts when rocks or UFOs are destroyed
 - **Smoke trail particles** — small white dots trail behind the ship when thrusting
-- **Score system** — earn points for destroying rocks
-- **High score board** — top 5 scores are saved in your browser
+- **Score system** — earn points for destroying rocks; UFOs are worth 500 points
+- **High score board** — top 5 scores are saved in your browser (`localStorage`)
 - **Game over screen** — shows your score, high scores, and restart instructions
 - **Ship destruction effect** — the ship breaks into 3 pieces on collision
 - **Title screen flow** — press **Space** (desktop) or tap (mobile) to start; return to title after game over
-- **Shockwave ability** — expanding dotted ring breaks rocks; **E** on desktop, **WAVE** button on mobile
+- **Shockwave ability** — expanding dotted ring breaks rocks and destroys UFOs; **E** on desktop, **WAVE** button on mobile (5-second cooldown)
 - **Desktop + mobile layouts** — auto-detects device; desktop uses an 800×600 game box, mobile uses a touch controller panel
 - **Direction-based mobile joystick** — ship steers toward the joystick direction with inertia
 - **Delta time movement** — consistent gameplay speed across different frame rates and devices
-- **Retro arcade sound effects** — laser, explosions, thrust hum, shockwave, and game over tones (Web Audio API)
+- **Retro arcade sound effects** — laser, explosions, thrust hum, shockwave, game over, and UFO sounds (Web Audio API, no external audio files)
+
+---
+
+## UFO Enemy
+
+The UFO is a **hunter** — it does **not** shoot projectiles.
+
+| Behavior | Details |
+|----------|---------|
+| **Spawn** | One UFO at a time, entering from a random screen edge every 12–28 seconds |
+| **Patrol** | If you stay far away, it cruises straight across the play area and exits |
+| **Chase** | If you enter its detection range (~180 px), it locks on and pursues you |
+| **Rocks** | Rocks bounce off the UFO instead of breaking |
+| **Ship contact** | Game over |
+| **Destroyed by** | Bullets or shockwave (+500 score) |
+
+**UFO sounds**
+
+- **Appear** — short rising retro beep when it enters
+- **Patrol hum** — soft looping hum while cruising (stops on chase, removal, or game over)
+- **Chase hum** — faster, more urgent pulsing tone while hunting
+- **Destroyed** — distinct electronic zap (different from rock break sounds)
+
+Hum loops use persistent Web Audio nodes and only start/stop on state changes (not every frame). Audio respects the mute button and requires a user interaction to start (same as other SFX).
 
 ---
 
@@ -91,6 +125,15 @@ Use the **SFX ON / OFF** button in the top-right corner to mute or unmute sound.
 - Added delta time updates so movement and effects stay consistent across 30, 60, and higher FPS
 - Increased overall sound volume for clearer retro SFX
 
+### Version 2.1
+
+- Added UFO hunter enemy (patrol, chase, rock bounce, collision game over)
+- Added classic flying saucer vector art (separate visual size and collision radius)
+- Added desktop mouse aim, thrust-by-distance, click-to-fire, and right-click shockwave
+- Added UFO sound effects: appear, patrol hum, chase hum, and destroyed zap
+- Added slower UFO cruise speed when not chasing
+- Added **U** key to force-spawn a UFO for beta testing
+
 ---
 
 ## How To Run The Game
@@ -104,6 +147,15 @@ No installation or build step is required.
 
 ### Option 2: Run a local server
 
+If you have Node.js installed (recommended):
+
+```bash
+cd "Retro Asteroids Game"
+npx serve . -l tcp://0.0.0.0:8080
+```
+
+Then open [http://localhost:8080](http://localhost:8080) in your browser.
+
 If you have Python installed:
 
 ```bash
@@ -111,14 +163,9 @@ cd "Retro Asteroids Game"
 python -m http.server 8080
 ```
 
-Then open [http://localhost:8080](http://localhost:8080) in your browser.
+Then open [http://localhost:8080](http://localhost:8080).
 
-If you have Node.js installed:
-
-```bash
-cd "Retro Asteroids Game"
-npx serve .
-```
+> **Note:** Error `-102` / connection refused usually means the local server is not running. Start the server and keep the terminal open while you play.
 
 ### Option 3: Publish with GitHub Pages
 
@@ -134,9 +181,9 @@ npx serve .
 
 ```
 Retro Asteroids Game/
-├── index.html    # Main HTML page and game canvas
-├── style.css     # UI and layout styles
-├── game.js       # Game logic, physics, particles, and audio
+├── index.html    # Main HTML page, canvas, and UI
+├── style.css     # UI and layout styles (desktop + mobile)
+├── game.js       # Game logic, physics, particles, UFO, and audio
 └── README.md     # This file
 ```
 
@@ -145,10 +192,9 @@ Retro Asteroids Game/
 ## Future Ideas
 
 - Power-ups
-- Levels
-- Boss fight
-- More sound effects
+- Levels / boss fight
 - Online/global high score leaderboard
+- Additional enemy types
 
 ---
 
